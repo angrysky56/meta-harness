@@ -14,6 +14,7 @@ from typing import Any, Protocol
 
 from litellm import completion as litellm_completion
 from litellm import completion_cost, token_counter
+import litellm as _litellm
 from openai_harmony import (
     HarmonyEncodingName,
     HarmonyError,
@@ -29,6 +30,10 @@ from tenacity import (
 )
 
 logger = logging.getLogger(__name__)
+
+# DeepSeek v4+ and other bleeding-edge models may not be in litellm's model
+# registry yet. This prevents litellm from crashing on unrecognized models.
+_litellm.drop_params = True
 
 CACHE_DIR = Path(
     os.path.expanduser(
@@ -118,6 +123,13 @@ def _is_retryable(exc: Exception) -> bool:
 
 
 def _extract_content(response: Any) -> str:
+    """Extract text content from litellm response.
+
+    Handles reasoning models (DeepSeek v4+) where the final answer is in
+    'content' and chain-of-thought is in 'reasoning_content'. If the model
+    finishes before producing 'content' (e.g. max_tokens hit during reasoning),
+    we fall back to reasoning_content so we at least get something.
+    """
     message = response.choices[0].message
     content = getattr(message, "content", None)
     if isinstance(content, str):
@@ -129,7 +141,14 @@ def _extract_content(response: Any) -> str:
                 parts.append(item["text"])
             elif hasattr(item, "text"):
                 parts.append(item.text)
-        return "".join(parts)
+        if parts:
+            return "".join(parts)
+
+    # Reasoning model fallback: content is None, answer may be in reasoning_content
+    reasoning = getattr(message, "reasoning_content", None)
+    if isinstance(reasoning, str) and reasoning:
+        return reasoning
+
     return ""
 
 
@@ -248,7 +267,7 @@ class ProviderLLM:
         else:
             try:
                 cost = float(completion_cost(completion_response=response) or 0.0)
-            except (ValueError, TypeError, AttributeError, ZeroDivisionError):
+            except Exception:
                 cost = 0.0
 
         return {

@@ -13,8 +13,10 @@ Run ONE iteration of memory system evolution. Do all work in the main session �
 
 - You MUST implement 3 new memory systems every iteration.
 - Do NOT write "the frontier is optimal" or "stop iterating", or abort early.
-- ALWAYS complete all steps including prototyping.
+- ALWAYS complete all steps including prototyping AND implementation.
 - Design exactly 3 candidates per iteration: mix of exploitation and exploration.
+- **DO NOT STOP AFTER PROTOTYPING.** Prototyping (Step 2) is NOT the final deliverable. You MUST proceed through Step 3 (Implement) and Step 4 (Write pending_eval.json). The files in `/tmp/` are throwaway tests — the real deliverable is `agents/<name>.py` files PLUS `pending_eval.json`.
+- **ALL output files go to the project directory**, not `/tmp/`. Agent files go to `agents/<name>.py`. pending_eval.json goes to the path in the task prompt.
 
 ### Anti-parameter-tuning rules
 
@@ -38,6 +40,15 @@ Exploitation axes: A=Prompt template, B=Memory content, C=Selection algorithm, D
 - **No dataset-specific hints.** Do not hardcode knowledge about specific datasets. Memory systems must be general-purpose.
 - **Never mention dataset names** in system code, prompts, or comments.
 - **General patterns are OK.** Rules like "prioritize recent errors" or "balance label coverage" are fine — they apply broadly.
+
+## ADVANCED TOOLS
+
+You have access to specialized tools to aid in your research and design process:
+
+- **Synapse (`Synapse`)**: Query the LLM-WIKI knowledge graph. Use this to find literature-backed strategies, similar problems solved in other domains, or to ingest your own insights into the permanent memory of the harness.
+- **Reason (`Reason`)**: Activate advanced cognitive reasoning (Sequential Thinking, Meta-cognition). Use this for complex hypothesis testing, multi-step planning, or when analyzing tricky failure patterns in the prediction traces.
+
+Use these tools PROACTIVELY to ensure your candidates are grounded in established research and deep reasoning, not just trial and error.
 
 ## WORKFLOW
 
@@ -75,7 +86,10 @@ For each of the 3 candidates:
 1. Copy a top-performing base system to `agents/<name>.py`, then make targeted modifications. This copy-then-edit approach ensures correct imports and proven patterns.
 2. Implement the new mechanism according to your hypothesis.
 3. **Self-critique (mandatory):** After implementing, re-read the file and check: does this system introduce a genuinely NEW mechanism, or is it just a parameter variant? If the logic in `predict()` and `learn_from_batch()` is identical to the base except for numbers, REWRITE with a truly novel mechanism.
-4. Validate: `uv run python -c "from text_classification.agents.<name> import *; print('OK')"`
+4. **Lint & Type Check (mandatory):**
+   - Run `ruff check agents/<name>.py` and fix all violations.
+   - Run `mypy agents/<name>.py --ignore-missing-imports` and fix all type errors.
+5. **Validate Runtime:** `uv run python -c "from text_classification.agents.<name> import *; print('OK')"`
 
 Do not edit `config.yaml` just to register candidates. The benchmark auto-discovers files in `agents/`.
 
@@ -101,12 +115,20 @@ Write to the path specified in the task prompt (NOT hardcoded — it may be in a
 
 Output: `CANDIDATES: <name1>, <name2>, <name3>`
 
+**BEFORE you finish:** Verify that ALL of these exist:
+- [ ] `pending_eval.json` written to the path from the task prompt
+- [ ] 3 agent files in `agents/<name>.py`
+- [ ] Each agent imports cleanly via `uv run python -c "from text_classification.agents.<name> import *"`
+- [ ] `/tmp/` prototype scripts deleted
+
+If ANY are missing, go back and complete the missing step. Do NOT end the conversation until all four checkboxes are done.
+
 ## MemorySystem Interface
 
 ```python
 class MemorySystem(ABC):
     def __init__(self, llm: LLMCallable): ...
-    def predict(self, input: str) -> tuple[str, dict[str, Any]]: ...
+    def predict(self, text: str) -> tuple[str, dict[str, Any]]: ...
     def learn_from_batch(self, batch_results: list[dict[str, Any]]) -> None: ...
     def get_state(self) -> str: ...       # JSON-serializable
     def set_state(self, state: str) -> None: ...
@@ -137,3 +159,11 @@ One JSON object per line, one line per evaluated candidate:
 ## Component Analysis
 
 Treat `evolution_summary.jsonl`, `frontier_val.json`, and recent training traces as the only shipped history sources in this trimmed repo.
+
+## CODER BEST PRACTICES (Avoid Runtime Bugs)
+
+1. **Fragile JSON Parsing:** Never do `json.loads(str(complex_object))`. Python's `str()` on a list/dict uses single quotes, which is NOT valid JSON. Use `json.dumps()` or the fixed `extract_json_field` utility.
+2. **Missing Imports:** When copying a base system, ensure all required modules (like `json`, `random`, `typing`) are imported.
+3. **Type Safety:** The system uses `mypy`. Ensure your `predict` and `learn_from_batch` methods match the `MemorySystem` base class signatures exactly.
+4. **Resilience:** Wrap `json.loads` in `try/except` blocks. If learning fails for one batch, the system should gracefully continue with old state rather than crashing.
+5. **Memory Limits:** Text classification inputs can be large. Use `text[:200]` for rule synthesis or analysis prompts to avoid hitting LLM context limits or bloating state.

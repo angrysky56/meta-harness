@@ -10,6 +10,7 @@ import os
 import queue
 import re
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -304,8 +305,7 @@ def _extract_json_blocks(text):
     results = []
     # Match: optional bold/backtick filename hint, then ```json block
     pattern = re.compile(
-        r"(?:\*\*`?([^`*\n]+\.json)`?\*\*[: \t]*\n)?"
-        r"```json\s*\n(.*?)```",
+        r"(?:\*\*`?([^`*\n]+\.json)`?\*\*[: \t]*\n)?" r"```json\s*\n(.*?)```",
         re.DOTALL,
     )
     for m in pattern.finditer(text):
@@ -360,11 +360,13 @@ def log_session(result, log_dir):
     }
     if result.stderr:
         meta["stderr"] = result.stderr
-    (run_dir / "meta.json").write_text(json.dumps(meta, indent=2, default=str))
+    (run_dir / "meta.json").write_text(
+        json.dumps(meta, indent=2, default=str), encoding="utf-8"
+    )
 
     # response.md
     if result.text:
-        (run_dir / "response.md").write_text(result.text)
+        (run_dir / "response.md").write_text(result.text, encoding="utf-8")
 
     # artifacts/ - JSON blocks extracted from response text
     if result.text:
@@ -374,12 +376,14 @@ def log_session(result, log_dir):
             art_dir.mkdir(exist_ok=True)
             for i, (name, data) in enumerate(json_blocks, 1):
                 fname = name or f"{i:03d}.json"
-                (art_dir / fname).write_text(json.dumps(data, indent=2) + "\n")
+                (art_dir / fname).write_text(
+                    json.dumps(data, indent=2) + "\n", encoding="utf-8"
+                )
 
     # events.jsonl
     if result.raw_events:
         lines = [json.dumps(e, default=str) for e in result.raw_events]
-        (run_dir / "events.jsonl").write_text("\n".join(lines) + "\n")
+        (run_dir / "events.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     # tools/ - one human-readable file per tool call
     if result.tool_calls:
@@ -419,7 +423,9 @@ def log_session(result, log_dir):
                 parts.append("--- output ---")
                 parts.append(output)
 
-            (tools_dir / f"{i:03d}_{tc.name}.txt").write_text("\n".join(parts))
+            (tools_dir / f"{i:03d}_{tc.name}.txt").write_text(
+                "\n".join(parts), encoding="utf-8"
+            )
 
     result.log_dir = str(run_dir)
     return str(run_dir)
@@ -429,7 +435,7 @@ def load_skill(skill_path):
     """Load a skill markdown file. Returns content string or None if not found."""
     path = Path(skill_path)
     if path.exists():
-        return path.read_text()
+        return path.read_text(encoding="utf-8")
     return None
 
 
@@ -448,16 +454,26 @@ def load_skills(skills, skill_dir=None):
                 {
                     "path": str(skill_file),
                     "name": p.name,
-                    "content": skill_file.read_text(),
+                    "content": skill_file.read_text(encoding="utf-8"),
                 }
             )
         elif p.is_dir():
             for md in sorted(p.glob("*.md")):
                 loaded.append(
-                    {"path": str(md), "name": md.stem, "content": md.read_text()}
+                    {
+                        "path": str(md),
+                        "name": md.stem,
+                        "content": md.read_text(encoding="utf-8"),
+                    }
                 )
         elif p.is_file():
-            loaded.append({"path": str(p), "name": p.stem, "content": p.read_text()})
+            loaded.append(
+                {
+                    "path": str(p),
+                    "name": p.stem,
+                    "content": p.read_text(encoding="utf-8"),
+                }
+            )
         else:
             candidates = [
                 skill_dir / s / "SKILL.md",
@@ -468,7 +484,11 @@ def load_skills(skills, skill_dir=None):
                 if c.is_file():
                     name = c.parent.name if c.name == "SKILL.md" else c.stem
                     loaded.append(
-                        {"path": str(c), "name": name, "content": c.read_text()}
+                        {
+                            "path": str(c),
+                            "name": name,
+                            "content": c.read_text(encoding="utf-8"),
+                        }
                     )
                     break
 
@@ -672,48 +692,52 @@ def run(
     return result
 
 
-if __name__ == "__main__":
-    import hashlib as _hashlib
-
-    LOG_DIR = "experience"
+def main():
+    """Main execution block for testing the wrapper."""
+    log_dir = "experience"
 
     print("=== Test 1: Summarize this repo ===")
     run(
-        "Read through all important files in this directory and give a summary. Only return the summary, no other text.",
+        "Read through all important files in this directory and give a summary. "
+        "Only return the summary, no other text.",
         allowed_tools=TOOLS_READ,
         name="summarize-repo",
-        log_dir=LOG_DIR,
+        log_dir=log_dir,
     ).show()
     print()
 
     print("=== Test 2: Write 5 files ===")
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    h = _hashlib.md5(ts.encode()).hexdigest()[:8]
-    work_dir = f"/tmp/{ts}_{h}"
-    os.makedirs(work_dir, exist_ok=True)
+    work_dir = tempfile.mkdtemp()
     run(
-        "Create 5 Python files named 001.py through 005.py in /tmp/meta-harness-test. "
+        f"Create 5 Python files named 001.py through 005.py in {work_dir}. "
         "If the directory already exists, delete it and create a new one. "
         "Each should contain a single python function named task_N (where N is the file number) "
         "that returns N in a creative way. Nothing else.",
         allowed_tools=TOOLS_BASH,
         cwd=work_dir,
         name="write-5-files",
-        log_dir=LOG_DIR,
+        log_dir=log_dir,
     ).show()
     print(f"  dir: {work_dir}")
     print()
 
     print("=== Test 3: Web search ===")
     r = run(
-        "Search the web for the 'Meta-Harness' paper and give a summary of the core idea. Brainstorm a list of 3 new _very specific_ applications of Meta-Harness, and tell me which you think is the most well-scoped and interesting. For that idea, point me to a small set of the best resources online for getting started",
+        "Search the web for the 'Meta-Harness' paper and give a summary of the core idea. "
+        "Brainstorm a list of 3 new _very specific_ applications of Meta-Harness, "
+        "and tell me which you think is the most well-scoped and interesting. "
+        "For that idea, point me to a small set of the best resources online for getting started",
         allowed_tools=TOOLS_ALL,
         name="websearch-test",
-        log_dir=LOG_DIR,
+        log_dir=log_dir,
     )
     r.show()
     print()
     print(r.text)
     print()
 
-    print(f"Logs: {LOG_DIR}/")
+    print(f"Logs: {log_dir}/")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,7 +1,7 @@
 """Autonomous evolution loop for memory systems.
 
 Val-only during evolution (test never exposed).
-Uses claude_wrapper + meta-harness skill to propose new memory systems.
+Uses hermes_wrapper + meta-harness skill to propose new memory systems.
 
     uv run python meta_harness.py --iterations 20 --fresh
     uv run python meta_harness.py --iterations 10 --run-name my-run
@@ -17,9 +17,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import hermes_wrapper
 import yaml
-
-import claude_wrapper
 from benchmark import get_model_short_name, load_results
 
 EVOLVE_DIR = Path(__file__).parent
@@ -41,6 +40,8 @@ PROPOSER_ALLOWED_TOOLS = [
     "Write",
     "Edit",
     "Bash",
+    "Synapse",
+    "Reason",
 ]
 
 _interrupted = False
@@ -95,7 +96,7 @@ def _pct(val):
     return _red(s)
 
 
-def _handle_signal(signum, frame):
+def _handle_signal(_signum, _frame):
     global _interrupted
     _interrupted = True
     print("\nInterrupted, finishing current step...", flush=True)
@@ -105,7 +106,7 @@ def run_cmd(cmd, timeout=7200, cwd=None):
     """Wraps subprocess.run; returns CompletedProcess with returncode=124 on timeout."""
     try:
         return subprocess.run(
-            cmd, cwd=cwd, timeout=timeout, capture_output=True, text=True
+            cmd, cwd=cwd, timeout=timeout, capture_output=True, text=True, check=False
         )
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(
@@ -115,7 +116,17 @@ def run_cmd(cmd, timeout=7200, cwd=None):
 
 def run_benchmark(args):
     return run_cmd(
-        ["uv", "run", "python", "benchmark.py", "--logs-dir", str(LOGS_DIR)] + args,
+        [
+            "uv",
+            "run",
+            "--env-file",
+            ".env",
+            "python",
+            "benchmark.py",
+            "--logs-dir",
+            str(LOGS_DIR),
+        ]
+        + args,
         cwd=str(EVOLVE_DIR),
     )
 
@@ -148,30 +159,45 @@ def count_iterations_from_summary():
     return max_iter
 
 
-def propose_claude(task_prompt, iteration, timeout=2400):
+def propose_hermes(task_prompt, iteration, timeout=2400):
     """Returns True if candidates were produced (pending_eval.json exists)."""
-    os.environ.pop("CLAUDECODE", None)
-    # Strip API key so claude CLI uses subscription auth (avoids rate limits)
-    saved_key = os.environ.pop("ANTHROPIC_API_KEY", None)
-    result = claude_wrapper.run(
-        prompt=task_prompt,
-        model="opus",
-        allowed_tools=PROPOSER_ALLOWED_TOOLS,
-        skills=[str(EVOLVE_DIR / ".claude/skills/meta-harness")],
-        cwd=str(EVOLVE_DIR),
-        log_dir=str(LOGS_DIR / "claude_sessions"),
-        name=f"iter{iteration}",
-        timeout_seconds=timeout,
-        effort="max",
+    # Read the skill instructions
+    skill_path = EVOLVE_DIR / ".claude/skills/meta-harness/SKILL.md"
+    skill_content = skill_path.read_text() if skill_path.exists() else ""
+
+    system_prompt = f"""You are an autonomous AI agent working inside a meta-harness loop.
+    Your goal is to propose and implement 3 new memory systems for text classification.
+
+    {skill_content}
+    """
+
+    # Allow Ollama override via env vars for cheap proposer runs
+    proposer_model = os.environ.get("HERMES_PROPOSER_MODEL")
+    proposer_provider = os.environ.get("HERMES_PROPOSER_PROVIDER")
+    proposer_base_url = os.environ.get("HERMES_PROPOSER_BASE_URL")
+
+    wrapper = hermes_wrapper.HermesWrapper(
+        model=proposer_model,
+        provider=proposer_provider,
+        base_url=proposer_base_url,
+        skip_mcp=True,  # proposer only needs file+terminal, not MCP servers
+        log_dir=str(LOGS_DIR / "hermes_sessions"),
     )
-    # Restore API key
-    if saved_key:
-        os.environ["ANTHROPIC_API_KEY"] = saved_key
+
+    result = wrapper.run(
+        prompt=task_prompt,
+        allowed_tools=PROPOSER_ALLOWED_TOOLS,
+        name=f"iter{iteration}",
+        system_prompt=system_prompt,
+        timeout=timeout,
+    )
+
     if result.exit_code != 0:
         print(f"  {_red('proposer failed')} exit={result.exit_code}")
         if result.stderr:
             print(f"  {_dim(result.stderr[:500])}")
         return False
+
     result.show()
     return PENDING_EVAL.exists()
 
@@ -215,7 +241,7 @@ def update_evolution_summary(
     pareto = frontier.get("_pareto", [])
     best_val = pareto[0].get("val_accuracy", 0) if pareto else 0
 
-    with open(EVOLUTION_SUMMARY, "a") as f:
+    with open(EVOLUTION_SUMMARY, "a", encoding="utf-8") as f:
         for i, c in enumerate(candidates):
             name = c["name"]
             avg_val = val_scores.get(name, 0)
@@ -226,9 +252,11 @@ def update_evolution_summary(
                 "axis": c.get("axis", "?"),
                 "hypothesis": c.get("hypothesis", ""),
                 "delta": round(avg_val - best_val, 1) if best_val else None,
-                "outcome": f"{avg_val:.1f}% ({avg_val - best_val:+.1f})"
-                if avg_val > 0
-                else "failed",
+                "outcome": (
+                    f"{avg_val:.1f}% ({avg_val - best_val:+.1f})"
+                    if avg_val > 0
+                    else "failed"
+                ),
             }
             if "components" in c:
                 row["components"] = c["components"]
@@ -273,7 +301,7 @@ def fresh_start():
 def run_evolve(args):
     global LOGS_DIR, PENDING_EVAL, FRONTIER_VAL, EVOLUTION_SUMMARY
 
-    with open(CONFIG_PATH) as f:
+    with open(CONFIG_PATH, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     datasets = cfg["datasets"]
 
@@ -367,7 +395,7 @@ def run_evolve(args):
         # Propose
         propose_start = time.time()
         print(f"  {_ts()} {_cyan('proposing')} new candidates...", flush=True)
-        ok = propose_claude(task_prompt, iteration, timeout=args.propose_timeout)
+        ok = propose_hermes(task_prompt, iteration, timeout=args.propose_timeout)
         propose_time = time.time() - propose_start
 
         if not ok:
@@ -501,7 +529,7 @@ def run_evolve(args):
 def main():
     parser = argparse.ArgumentParser(description="Evolution loop for memory systems")
     parser.add_argument("--iterations", type=int, default=20)
-    with open(CONFIG_PATH) as f:
+    with open(CONFIG_PATH, encoding="utf-8") as f:
         _cfg = yaml.safe_load(f)
     _default_model = _cfg["models"][0]["model"] if _cfg.get("models") else None
     parser.add_argument(

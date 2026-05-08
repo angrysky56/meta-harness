@@ -1,5 +1,8 @@
 """Inner Loop: Online and offline training with memory systems."""
 
+import argparse
+import importlib
+import inspect
 import json
 import threading
 import time
@@ -9,6 +12,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import yaml
+
+from .data import ALL_TASKS, load_dataset_splits, load_dataset_splits_3way
+from .llm import LLM
 from .memory_system import MemorySystem
 
 
@@ -24,18 +31,19 @@ class JSONLLogger:
         self._lock = threading.Lock()
         if self.path:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            self.path.write_text("")
+            self.path.write_text("", encoding="utf-8")
 
-    def log(self, type: str, **data):
+    def log(self, log_type: str, **data):
         """Write a log entry. All logging goes through this method."""
         if not self.path:
             return
-        entry = {"type": type, "t": round(time.time() - self.start_time, 2), **data}
+        entry = {"type": log_type, "t": round(time.time() - self.start_time, 2), **data}
         with self._lock:
-            with open(self.path, "a") as f:
+            with open(self.path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry) + "\n")
 
     def checkpoint(self, step: int, memory_state: str):
+        """Save a checkpoint if step matches configured intervals."""
         if step in self.checkpoint_steps:
             self.log("checkpoint", step=step, memory_state=memory_state)
 
@@ -189,7 +197,8 @@ def _run_offline_loop(
                     val_total=val_result["total"],
                 )
             print(
-                f"  epoch {epoch}: val={val_acc:.1%} ({val_result['correct']}/{val_result['total']})",
+                f"  epoch {epoch}: val={val_acc:.1%} "
+                f"({val_result['correct']}/{val_result['total']})",
                 flush=True,
             )
             if val_acc > best_val_acc:
@@ -476,7 +485,7 @@ def evaluate_memory(
     }
 
 
-def load_memory_system(path: str, llm) -> MemorySystem:
+def load_memory_system(path: str, llm: LLM) -> MemorySystem:
     """Load a memory system from a file path.
 
     Accepts paths like:
@@ -484,9 +493,6 @@ def load_memory_system(path: str, llm) -> MemorySystem:
     - 'agents/my_candidate.py'
     - 'no_memory' (searches built-in and generated agents)
     """
-    import importlib
-    import inspect
-
     # Handle short names (without directory)
     if "/" not in path and not path.endswith(".py"):
         try:
@@ -506,18 +512,13 @@ def load_memory_system(path: str, llm) -> MemorySystem:
 
 def load_config() -> dict:
     """Load config from config.yaml."""
-    import yaml
-
     config_path = Path(__file__).parent / "config.yaml"
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-if __name__ == "__main__":
-    import argparse
-
-    from .data import ALL_TASKS, load_dataset_splits, load_dataset_splits_3way
-
+def main():
+    """Main execution entry point."""
     # Load config from YAML
     cfg = load_config()
 
@@ -533,7 +534,10 @@ if __name__ == "__main__":
         "--mode",
         default=cfg["inner_loop"].get("mode", "online"),
         choices=["online", "offline"],
-        help="Training mode: online (predict->feedback->update) or offline (train with labels->eval)",
+        help=(
+            "Training mode: online (predict->feedback->update) "
+            "or offline (train with labels->eval)"
+        ),
     )
     parser.add_argument(
         "--num-epochs",
@@ -634,8 +638,6 @@ if __name__ == "__main__":
         val_examples = []
         print(f"Train: {len(train_examples)}, Test: {len(test_examples)}", flush=True)
 
-    from .llm import LLM
-
     # Resolve model/api_base: CLI args > first entry in config models list
     if args.model:
         model = args.model
@@ -682,7 +684,7 @@ if __name__ == "__main__":
 
     if args.load_memory:
         # Skip training — load saved memory state
-        state = Path(args.load_memory).read_text()
+        state = Path(args.load_memory).read_text(encoding="utf-8")
         memory.set_state(state)
         print(f"Loaded memory state from {args.load_memory}", flush=True)
         train_acc = 0.0
@@ -711,7 +713,8 @@ if __name__ == "__main__":
             )
             train_correct = chunk_results["correct"]
             print(
-                f"[{len(train_examples)}/{len(train_examples)}] {time.time() - run_start:.1f}s",
+                f"[{len(train_examples)}/{len(train_examples)}] "
+                f"{time.time() - run_start:.1f}s",
                 flush=True,
             )
         else:
@@ -737,7 +740,7 @@ if __name__ == "__main__":
         # Save memory state after training
         if args.save_memory:
             Path(args.save_memory).parent.mkdir(parents=True, exist_ok=True)
-            Path(args.save_memory).write_text(memory.get_state())
+            Path(args.save_memory).write_text(memory.get_state(), encoding="utf-8")
             print(f"Saved memory state to {args.save_memory}", flush=True)
 
     # Eval: only run what's requested
@@ -751,22 +754,22 @@ if __name__ == "__main__":
         val_preds = combined["predictions"][: len(val_examples)]
         test_preds = combined["predictions"][len(val_examples) :]
     elif eval_val:
-        result = evaluate_memory(memory, val_examples, evaluator)
-        avg_context_len = result["avg_context_len"]
-        val_preds = result["predictions"]
+        eval_result = evaluate_memory(memory, val_examples, evaluator)
+        avg_context_len = eval_result["avg_context_len"]
+        val_preds = eval_result["predictions"]
     elif eval_test:
-        result = evaluate_memory(memory, test_examples, evaluator)
-        avg_context_len = result["avg_context_len"]
-        test_preds = result["predictions"]
+        eval_result = evaluate_memory(memory, test_examples, evaluator)
+        avg_context_len = eval_result["avg_context_len"]
+        test_preds = eval_result["predictions"]
 
-    val_result = make_result(val_preds) if val_preds else None
-    test_result = make_result(test_preds) if test_preds else None
+    val_result = make_result(val_preds) if val_preds else {}
+    test_result = make_result(test_preds) if test_preds else {}
 
-    val_acc = val_result["accuracy"] if val_result else None
-    test_acc = test_result["accuracy"] if test_result else None
+    val_acc = val_result.get("accuracy")
+    test_acc = test_result.get("accuracy")
 
     runtime = time.time() - run_start
-    llm_usage = llm.get_usage()
+    usage = llm.get_usage()
 
     logger.log(
         "done",
@@ -783,20 +786,20 @@ if __name__ == "__main__":
     )
 
     # Print summary
-    summary = f"Done: train={train_acc:.0%}"
+    summary_str = f"Done: train={train_acc:.0%}"
     if val_acc is not None:
-        summary += f" val={val_acc:.0%}"
+        summary_str += f" val={val_acc:.0%}"
     if test_acc is not None:
-        summary += f" test={test_acc:.0%}"
-    summary += f" time={runtime:.1f}s"
-    print(summary, flush=True)
+        summary_str += f" test={test_acc:.0%}"
+    summary_str += f" time={runtime:.1f}s"
+    print(summary_str, flush=True)
 
     # Build common metadata for output JSON
-    def _build_output(result_dict: dict) -> dict:
+    def _build_output(res: dict) -> dict:
         return {
-            "accuracy": result_dict["accuracy"],
-            "correct": result_dict["correct"],
-            "total": result_dict["total"],
+            "accuracy": res["accuracy"],
+            "correct": res["correct"],
+            "total": res["total"],
             "dataset": args.dataset,
             "memory": args.memory,
             "model": model,
@@ -806,20 +809,24 @@ if __name__ == "__main__":
             "timestamp": datetime.now().isoformat(),
             "runtime_seconds": round(runtime, 2),
             "memory_context_chars": avg_context_len,
-            "llm_calls": llm_usage["calls"],
-            "llm_input_tokens": llm_usage["input_tokens"],
-            "llm_output_tokens": llm_usage["output_tokens"],
-            "llm_total_tokens": llm_usage["total_tokens"],
+            "llm_calls": usage["calls"],
+            "llm_input_tokens": usage["input_tokens"],
+            "llm_output_tokens": usage["output_tokens"],
+            "llm_total_tokens": usage["total_tokens"],
         }
 
     if args.val_output and val_result:
         Path(args.val_output).parent.mkdir(parents=True, exist_ok=True)
-        with open(args.val_output, "w") as f:
+        with open(args.val_output, "w", encoding="utf-8") as f:
             json.dump(_build_output(val_result), f, indent=2)
         print(f"Saved val results to {args.val_output}", flush=True)
 
     if args.test_output and test_result:
         Path(args.test_output).parent.mkdir(parents=True, exist_ok=True)
-        with open(args.test_output, "w") as f:
+        with open(args.test_output, "w", encoding="utf-8") as f:
             json.dump(_build_output(test_result), f, indent=2)
         print(f"Saved test results to {args.test_output}", flush=True)
+
+
+if __name__ == "__main__":
+    main()

@@ -15,7 +15,7 @@ import yaml
 def load_config() -> dict:
     """Load config from config.yaml."""
     config_path = Path(__file__).parent / "config.yaml"
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -83,6 +83,7 @@ async def _run_with_retries(
     log_path: Path,
     max_retries: int = 2,
     timeout: float = 7200,
+    env: dict = None,
 ) -> bool:
     cmd_str = " ".join(cmd)
     log_path.write_text(f"command: {cmd_str}\n\n")
@@ -97,6 +98,7 @@ async def _run_with_retries(
                 *cmd,
                 stdout=f,
                 stderr=asyncio.subprocess.STDOUT,
+                env=env,
             )
             try:
                 code = await asyncio.wait_for(proc.wait(), timeout=timeout)
@@ -124,7 +126,19 @@ async def run_all_jobs(
     async def run_one(idx: int, desc: str, cmd: list[str]) -> tuple[str, bool]:
         async with sem:
             log_path = logs_dir / f"{idx:02d}_{_sanitize_filename(desc)}.log"
-            ok = await _run_with_retries(cmd, log_path, max_retries=max_retries)
+            bench_env = {
+                **os.environ,
+                "PYTHONPATH": os.path.abspath(
+                    os.path.join(os.path.dirname(__file__), "..")
+                ),
+            }
+            # uv run strips env vars — forward API keys explicitly
+            for key in ("OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+                if key in os.environ:
+                    bench_env[key] = os.environ[key]
+            ok = await _run_with_retries(
+                cmd, log_path, max_retries=max_retries, env=bench_env
+            )
             if not ok:
                 _print_failure(desc, log_path)
             return desc, ok
@@ -314,7 +328,9 @@ def print_results(results: dict, metric_label: str = "val", pareto_only: bool = 
         for avg_acc, mem, cells, ctx_tokens in rows:
             row_by_mem[mem] = (avg_acc, mem, cells, ctx_tokens)
 
-        def print_row(avg_acc, mem, cells, ctx_tokens):
+        def print_row(
+            avg_acc, mem, cells, ctx_tokens, pareto_set=pareto_set, col_w=col_w
+        ):
             non_zero = [ct for ct in ctx_tokens if ct > 10]
             avg_ctx = int(sum(non_zero) / len(non_zero)) if non_zero else 0
             ctx_str = f"{avg_ctx:,}" if avg_ctx > 0 else "-"
@@ -326,7 +342,7 @@ def print_results(results: dict, metric_label: str = "val", pareto_only: bool = 
                 + f"{avg_acc:>7.1f}{ctx_str:>10}"
             )
 
-        def print_ref_row(method, ctx_chars):
+        def print_ref_row(method, ctx_chars, col_w=col_w):
             ref_cells = []
             ref_test = []
             for ds in DATASETS:
@@ -431,8 +447,6 @@ def build_val_runs(
                     rd.mkdir(parents=True, exist_ok=True)
                     desc = f"val/{dataset}/{mem_name}/{model_name}"
                     cmd = [
-                        "env",
-                        "PYTHONPATH=..",
                         "uv",
                         "run",
                         "python",
@@ -518,8 +532,6 @@ def build_test_runs(
                     rd_results.mkdir(parents=True, exist_ok=True)
                     desc = f"test/{dataset}/{mem_name}/{model_name}"
                     cmd = [
-                        "env",
-                        "PYTHONPATH=..",
                         "uv",
                         "run",
                         "python",
@@ -552,6 +564,8 @@ def build_test_runs(
                     )
                     if api_base:
                         cmd.extend(["--api-base", api_base])
+                    if mode == "offline" and num_epochs > 1:
+                        cmd.extend(["--num-epochs", str(num_epochs)])
                     if temperature is not None:
                         cmd.extend(["--temperature", str(temperature)])
                     runs.append((desc, cmd))
@@ -586,7 +600,7 @@ def print_frontier(
 
     # Compute best system per dataset
     by_dataset = defaultdict(list)
-    for (model, dataset, memory), data in results.items():
+    for (_, dataset, memory), data in results.items():
         acc = (data.get("accuracy") or 0) * 100
         ctx_len = data.get("memory_context_chars", 0)
         by_dataset[dataset].append(
@@ -625,7 +639,7 @@ def print_frontier(
 
     # Aggregate Pareto frontier
     by_memory = defaultdict(lambda: {"accs": [], "ctx_lens": []})
-    for (model, dataset, memory), data in results.items():
+    for (_, dataset, memory), data in results.items():
         acc = (data.get("accuracy") or 0) * 100
         ctx_len = data.get("memory_context_chars", 0)
         by_memory[memory]["accs"].append(acc)

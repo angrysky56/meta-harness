@@ -10,13 +10,22 @@ from typing import Any
 from .llm import LLMCallable
 
 
-def extract_json_field(text: str, field: str, default: str = "") -> str:
-    """Helper function to extract a field from JSON in LLM response."""
+def extract_json_field(text: str, field: str, default: Any = "") -> str:
+    """Helper function to extract a field from JSON in LLM response as a string.
+
+    If the field is a complex object (dict, list), it is serialized to JSON string.
+    """
+
+    def _val_to_str(v):
+        if isinstance(v, (dict, list)):
+            return json.dumps(v)
+        return str(v)
+
     # Try direct parse
     try:
         data = json.loads(text)
         if isinstance(data, dict):
-            return str(data.get(field, default))
+            return _val_to_str(data.get(field, default))
     except json.JSONDecodeError:
         pass
 
@@ -25,13 +34,13 @@ def extract_json_field(text: str, field: str, default: str = "") -> str:
         try:
             data = json.loads(match.group(1))
             if isinstance(data, dict):
-                return str(data.get(field, default))
+                return _val_to_str(data.get(field, default))
         except json.JSONDecodeError:
             pass
 
     # Find balanced braces and try parsing
-    for start in range(len(text)):
-        if text[start] != "{":
+    for start, char in enumerate(text):
+        if char != "{":
             continue
         depth, pos, in_str = 1, start + 1, False
         while pos < len(text) and depth > 0:
@@ -49,13 +58,13 @@ def extract_json_field(text: str, field: str, default: str = "") -> str:
             try:
                 data = json.loads(candidate)
                 if isinstance(data, dict):
-                    return str(data.get(field, default))
+                    return _val_to_str(data.get(field, default))
             except json.JSONDecodeError:
                 pass
 
-    # Regex fallback
+    # Regex fallback (only works for simple string values)
     match = re.findall(rf'"{field}"\s*:\s*"([^"]*)"', text)
-    return match[-1] if match else default
+    return match[-1] if match else str(default)
 
 
 class MemorySystem(ABC):
@@ -72,6 +81,7 @@ class MemorySystem(ABC):
     def call_llm(self, prompt: str) -> str:
         """Call the LLM with a prompt. Tracks last prompt length/hash per thread."""
         self._prompt_local.last_prompt_len = len(prompt)
+        # trunk-ignore(bandit/B324)
         self._prompt_local.last_prompt_hash = hashlib.md5(prompt.encode()).hexdigest()[
             :8
         ]
@@ -87,9 +97,8 @@ class MemorySystem(ABC):
         }
 
     @abstractmethod
-    def predict(self, input: str) -> tuple[str, dict[str, Any]]:
+    def predict(self, text: str) -> tuple[str, dict[str, Any]]:
         """Generate prediction BEFORE seeing ground truth. Returns (answer, metadata)."""
-        pass
 
     @abstractmethod
     def learn_from_batch(self, batch_results: list[dict[str, Any]]) -> None:
@@ -106,7 +115,6 @@ class MemorySystem(ABC):
         This is called AFTER all predictions in the batch are complete.
         The memory system can analyze patterns across the batch.
         """
-        pass
 
     def get_context_length(self) -> int:
         """Return the character length of context actually injected per query.
@@ -119,9 +127,7 @@ class MemorySystem(ABC):
     @abstractmethod
     def get_state(self) -> str:
         """Return serializable state for checkpointing."""
-        pass
 
     @abstractmethod
     def set_state(self, state: str) -> None:
         """Restore state from serialized representation."""
-        pass

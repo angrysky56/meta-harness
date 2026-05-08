@@ -15,3 +15,9 @@ package = false
 
 [tool.ruff]
 exclude = ["agents"]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.0.0",
+    "ruff>=0.15.12",
+]

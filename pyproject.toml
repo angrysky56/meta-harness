@@ -1,0 +1,30 @@
+[project]
+name = "meta-harness"
+version = "0.1.0"
+description = "Autonomous evolution loop for LLM memory systems and harnesses."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml",
+    "numpy",
+    "scikit-learn",
+    "tqdm",
+    "rich",
+    "websockets",
+    "fal-client",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "isort",
+    "ruff",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

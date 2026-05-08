@@ -8,6 +8,7 @@ dataset:
     USPTO:                     {num_train: 50, num_val: 30, num_test: 100}
     Symptom2Disease:           {num_train: 200, num_val: 50, num_test: 212}
     LawBench:                  {num_train: 200, num_val: 50, num_test: 100}
+    Sentiment:                 {num_train: 25, num_val: 15, num_test: 15}
 
 # Inner loop settings
 inner_loop:
@@ -32,9 +33,7 @@ benchmark:
 
 # Datasets to test
 datasets:
-  - USPTO
-  - Symptom2Disease
-  - LawBench
+  - Sentiment
 
 # Memory systems to test
 memory_systems:

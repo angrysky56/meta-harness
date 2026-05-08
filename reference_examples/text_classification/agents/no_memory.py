@@ -24,14 +24,13 @@ class NoMemory(MemorySystem):
         super().__init__(llm)
         self._state = "{}"
 
-    def predict(self, input: str) -> tuple[str, dict[str, Any]]:
-        response = self.call_llm(PROMPT.format(input=input))
+    def predict(self, text: str) -> tuple[str, dict[str, Any]]:
+        response = self.call_llm(PROMPT.format(input=text))
         answer = extract_json_field(response, "final_answer")
         return answer, {"full_response": response}
 
     def learn_from_batch(self, batch_results: list[dict[str, Any]]) -> None:
         """No learning - this baseline ignores all feedback."""
-        pass
 
     def get_state(self) -> str:
         return self._state

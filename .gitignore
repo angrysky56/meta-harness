@@ -215,3 +215,17 @@ experience/
 reference_examples/text_classification/data/**/__pycache__/
 reference_examples/text_classification/data/**/*.pyc
 reference_examples/terminal_bench_2/offline_experience/
+
+# Meta-Harness generated files
+reference_examples/text_classification/logs/
+reference_examples/text_classification/results/
+reference_examples/text_classification/hermes_sessions/
+reference_examples/text_classification/agents/*.py
+!reference_examples/text_classification/agents/__init__.py
+!reference_examples/text_classification/agents/no_memory.py
+!reference_examples/text_classification/agents/fewshot_memory.py
+!reference_examples/text_classification/agents/fewshot_all.py
+reference_examples/text_classification/experience/
+reference_examples/text_classification/.empty_plugins/
+.scratch/
+*.log

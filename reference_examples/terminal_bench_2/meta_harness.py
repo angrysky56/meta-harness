@@ -130,7 +130,13 @@ def run_cmd(cmd, timeout=7200, cwd=None):
             env[key] = val
     try:
         return subprocess.run(
-            cmd, cwd=cwd, timeout=timeout, capture_output=True, text=True, env=env
+            cmd,
+            cwd=cwd,
+            timeout=timeout,
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(cmd, 124, "", f"Timed out after {timeout}s")
@@ -165,6 +171,7 @@ def harbor_run(import_path, job_name, n_trials=2, n_concurrent=10):
             stderr=subprocess.PIPE,
             text=True,
             env=env,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         result = subprocess.CompletedProcess(cmd, 124, "", "Timed out after 14400s")

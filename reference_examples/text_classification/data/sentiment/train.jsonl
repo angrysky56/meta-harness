@@ -1,0 +1,30 @@
+{"input": "This movie was fantastic! Great acting and plot.", "target": "positive"}
+{"input": "Terrible waste of time. Boring and predictable.", "target": "negative"}
+{"input": "Absolutely loved every minute of it.", "target": "positive"}
+{"input": "One of the worst films I've ever seen.", "target": "negative"}
+{"input": "Brilliant performances by the entire cast.", "target": "positive"}
+{"input": "I walked out halfway through. So disappointing.", "target": "negative"}
+{"input": "A masterpiece of modern cinema.", "target": "positive"}
+{"input": "Poorly written and badly directed.", "target": "negative"}
+{"input": "The story was engaging from start to finish.", "target": "positive"}
+{"input": "Complete garbage. Do not waste your money.", "target": "negative"}
+{"input": "Really enjoyed the character development.", "target": "positive"}
+{"input": "The plot made no sense whatsoever.", "target": "negative"}
+{"input": "A beautiful, moving experience.", "target": "positive"}
+{"input": "I fell asleep, it was that boring.", "target": "negative"}
+{"input": "Outstanding direction and cinematography.", "target": "positive"}
+{"input": "The acting was wooden and unconvincing.", "target": "negative"}
+{"input": "Laughed and cried throughout. Wonderful film.", "target": "positive"}
+{"input": "A complete mess of a movie. Avoid.", "target": "negative"}
+{"input": "The soundtrack alone is worth watching for.", "target": "positive"}
+{"input": "Overhyped and underwhelming.", "target": "negative"}
+{"input": "Clever writing and sharp dialogue.", "target": "positive"}
+{"input": "This sequel ruined the franchise.", "target": "negative"}
+{"input": "An instant classic. Will watch again.", "target": "positive"}
+{"input": "I want my two hours back.", "target": "negative"}
+{"input": "The visual effects were stunning.", "target": "positive"}
+{"input": "Predictable ending, weak script.", "target": "negative"}
+{"input": "Heartwarming and genuinely funny.", "target": "positive"}
+{"input": "Pretentious and self-indulgent.", "target": "negative"}
+{"input": "Kept me on the edge of my seat.", "target": "positive"}
+{"input": "Nothing original, just a lazy remake.", "target": "negative"}

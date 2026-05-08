@@ -304,8 +304,7 @@ def _extract_json_blocks(text):
     results = []
     # Match: optional bold/backtick filename hint, then ```json block
     pattern = re.compile(
-        r"(?:\*\*`?([^`*\n]+\.json)`?\*\*[: \t]*\n)?"
-        r"```json\s*\n(.*?)```",
+        r"(?:\*\*`?([^`*\n]+\.json)`?\*\*[: \t]*\n)?```json\s*\n(.*?)```",
         re.DOTALL,
     )
     for m in pattern.finditer(text):
@@ -419,7 +418,7 @@ def log_session(result, log_dir):
                 parts.append("--- output ---")
                 parts.append(output)
 
-            (tools_dir / f"{i:03d}_{tc.name}.txt").write_text("\n".join(parts))
+            (tools_dir / f"{i:03d}_{tc.name}.txt").write_text("\n".join(parts), encoding="utf-8")
 
     result.log_dir = str(run_dir)
     return str(run_dir)
@@ -429,7 +428,7 @@ def load_skill(skill_path):
     """Load a skill markdown file. Returns content string or None if not found."""
     path = Path(skill_path)
     if path.exists():
-        return path.read_text()
+        return path.read_text(encoding="utf-8")
     return None
 
 
@@ -454,10 +453,20 @@ def load_skills(skills, skill_dir=None):
         elif p.is_dir():
             for md in sorted(p.glob("*.md")):
                 loaded.append(
-                    {"path": str(md), "name": md.stem, "content": md.read_text()}
+                    {
+                        "path": str(md),
+                        "name": md.stem,
+                        "content": md.read_text(encoding="utf-8"),
+                    }
                 )
         elif p.is_file():
-            loaded.append({"path": str(p), "name": p.stem, "content": p.read_text()})
+            loaded.append(
+                {
+                    "path": str(p),
+                    "name": p.stem,
+                    "content": p.read_text(encoding="utf-8"),
+                }
+            )
         else:
             candidates = [
                 skill_dir / s / "SKILL.md",
@@ -468,7 +477,11 @@ def load_skills(skills, skill_dir=None):
                 if c.is_file():
                     name = c.parent.name if c.name == "SKILL.md" else c.stem
                     loaded.append(
-                        {"path": str(c), "name": name, "content": c.read_text()}
+                        {
+                            "path": str(c),
+                            "name": name,
+                            "content": c.read_text(encoding="utf-8"),
+                        }
                     )
                     break
 
@@ -673,7 +686,6 @@ def run(
 
 
 if __name__ == "__main__":
-    import hashlib as _hashlib
 
     LOG_DIR = "experience"
 
@@ -687,10 +699,9 @@ if __name__ == "__main__":
     print()
 
     print("=== Test 2: Write 5 files ===")
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    h = _hashlib.md5(ts.encode()).hexdigest()[:8]
-    work_dir = f"/tmp/{ts}_{h}"
-    os.makedirs(work_dir, exist_ok=True)
+    import tempfile
+
+    work_dir = tempfile.mkdtemp(prefix="meta_harness_test_")
     run(
         "Create 5 Python files named 001.py through 005.py in /tmp/meta-harness-test. "
         "If the directory already exists, delete it and create a new one. "

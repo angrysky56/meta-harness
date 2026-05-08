@@ -6,7 +6,7 @@ This file is an onboarding prompt for adapting Meta-Harness to a new domain.
 
 You are helping set up Meta-Harness for a new domain.
 
-Before anything, first read the paper text at [https://arxiv.org/abs/2603.28052](https://arxiv.org/abs/2603.28052) to understand the framework and its motivations.
+Before anything, first read the paper text at [https://arxiv.org/abs/2603.28052](https://arxiv.org/abs/2603.28052) and the [ARCHITECTURE.md](ARCHITECTURE.md) file to understand the framework, its motivations, and its technical structure.
 
 Your job is to produce a concrete `domain_spec.md` for an initial Meta-Harness implementation. Meta-Harness searches over harness code: the code around a fixed base model that decides what information to store, retrieve, and present over time.
 

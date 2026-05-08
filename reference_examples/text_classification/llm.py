@@ -52,15 +52,18 @@ KNOWN_PROVIDER_PREFIXES = (
 
 MAX_PROMPT_CHARS = 224_000
 
-_HARMONY_ENC = None
+
+class _EncContainer:
+    harmony_enc = None
 
 
 def _get_harmony_enc():
     """Lazy-load harmony encoder to avoid import overhead when not using GPT-OSS."""
-    global _HARMONY_ENC
-    if _HARMONY_ENC is None:
-        _HARMONY_ENC = load_harmony_encoding(HarmonyEncodingName.HARMONY_GPT_OSS)
-    return _HARMONY_ENC
+    if _EncContainer.harmony_enc is None:
+        _EncContainer.harmony_enc = load_harmony_encoding(
+            HarmonyEncodingName.HARMONY_GPT_OSS
+        )
+    return _EncContainer.harmony_enc
 
 
 def parse_harmony_response(raw_content: str) -> str:
@@ -81,7 +84,7 @@ def parse_harmony_response(raw_content: str) -> str:
 
         if parsed:
             return "".join(c.text for c in parsed[-1].content if hasattr(c, "text"))
-    except Exception:
+    except (ValueError, TypeError, AttributeError):
         pass
 
     return raw_content
@@ -232,7 +235,7 @@ class ProviderLLM:
         if output_tokens is None:
             try:
                 output_tokens = token_counter(model=model, text=content)
-            except Exception:
+            except (ValueError, TypeError, AttributeError):
                 output_tokens = 0
 
         if self.api_base:
@@ -240,7 +243,7 @@ class ProviderLLM:
         else:
             try:
                 cost = float(completion_cost(completion_response=response) or 0.0)
-            except Exception:
+            except (ValueError, TypeError, AttributeError, ZeroDivisionError):
                 cost = 0.0
 
         return {

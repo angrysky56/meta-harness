@@ -51,6 +51,7 @@ def load_mce_dataset(
         "Symptom2Disease": _load_symptom2disease,
         "LawBench": _load_lawbench,
         "AEGIS": _load_aegis,
+        "Sentiment": _load_sentiment,
     }
     return loaders[task](split, limit)
 
@@ -507,3 +508,22 @@ Categories: {labels_str}
         prompt_fn=prompt_fn,
         limit=limit,
     )
+
+
+def _load_sentiment(split: str = "test", limit: int | None = None) -> list[dict]:
+    """Diagnostic sentiment classification (movie reviews)."""
+    data = _load_jsonl(_get_mce_split_path("sentiment", split), limit)
+    examples = []
+    for ex in data:
+        prompt = f"""Classify the sentiment of this movie review as positive or negative.
+
+Review: {ex["input"]}
+
+Respond with just the word "positive" or "negative"."""
+        examples.append({
+            "input": prompt,
+            "target": ex["target"],
+            "raw_input": ex["input"],
+            "input_nums": [],
+        })
+    return examples

@@ -184,6 +184,8 @@ def get_evaluator(task: str) -> Callable:
         return _eval_lawbench
     if task == "AEGIS":
         return lambda pred, target, **kwargs: eval_aegis(pred, target)
+    if task == "Sentiment":
+        return lambda pred, target, **kwargs: eval_classification(pred, target)
     if task in TRANSFER_TASKS:
         return lambda pred, target, **kwargs: eval_classification(pred, target)
     raise ValueError(f"Unknown task: {task}")

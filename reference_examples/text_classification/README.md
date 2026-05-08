@@ -38,6 +38,21 @@ uv run python benchmark.py --results
 - `agents/`: the kept baselines plus the write target for generated candidates.
 - `.claude/skills/meta-harness/SKILL.md`: main proposer prior used by `meta_harness.py`.
 
+## MemorySystem Interface
+
+All agents must implement the `MemorySystem` base class from `memory_system.py`:
+
+```python
+class MemorySystem(ABC):
+    def predict(self, text: str) -> tuple[str, dict[str, Any]]:
+        """Generate prediction BEFORE seeing ground truth."""
+
+    def learn_from_batch(self, batch_results: list[dict[str, Any]]) -> None:
+        """Learn from a batch of evaluation results."""
+```
+
+**Note:** The `predict` method uses the parameter name `text` to avoid shadowing the Python built-in `input()`.
+
 ## Runtime And Cost
 
 The release default uses OpenRouter (`openrouter/openai/gpt-oss-120b`). If you want a different provider or your own OpenAI-compatible endpoint, pass `--model` and optionally `--api-base`, or change `config.yaml`. The paper experiments used a local `vllm` deployment of `gpt-oss-120b`, MXFP4 quantized, with `max-model-len=32768`. API-backed runs may differ in quality from that setup and may be better.

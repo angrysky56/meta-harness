@@ -58,18 +58,20 @@ class FewShotMemory(MemorySystem):
             return ""
 
         if seed is not None and len(self.examples) > self.max_examples:
+            # trunk-ignore(bandit/B311)
             rng = random.Random(seed)
             to_use = rng.sample(self.examples, self.max_examples)
         else:
             to_use = self.examples[-self.max_examples :]
             if seed is not None:
+                # trunk-ignore(bandit/B311)
                 rng = random.Random(seed)
                 to_use = list(to_use)
                 rng.shuffle(to_use)
 
         parts = []
         total_chars = 0
-        for i, ex in enumerate(to_use, 1):
+        for ex in to_use:
             # Use raw_question for demos (avoids repeating task context per example)
             question = ex.get("raw_question", ex["input"])
             part = f"Q: {question}\nA: {ex['target']}"
@@ -80,14 +82,14 @@ class FewShotMemory(MemorySystem):
 
         return "\n\n".join(parts)
 
-    def predict(self, input: str) -> tuple[str, dict[str, Any]]:
+    def predict(self, text: str) -> tuple[str, dict[str, Any]]:
         """Generate prediction using accumulated few-shot examples."""
         # Use input hash as seed so each instance gets a different random sample
-        seed = hash(input) & 0xFFFFFFFF
+        seed = hash(text) & 0xFFFFFFFF
         examples_section = self._format_examples_section(seed=seed)
         prompt = PROMPT_TEMPLATE.format(
             examples_section=examples_section,
-            input=input,
+            input=text,
         )
 
         response = self.call_llm(prompt)

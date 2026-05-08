@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-MCE_TASKS = ["FiNER", "USPTO", "Symptom2Disease", "LawBench", "AEGIS"]
+MCE_TASKS = ["FiNER", "USPTO", "Symptom2Disease", "LawBench", "AEGIS", "Sentiment"]
 MCE_DATA_PATH = str(Path(__file__).resolve().parent)
 MCE_DATA_SPLITS = {
     "FiNER": {"train": 200, "val": 100, "test": 100},
@@ -10,6 +10,7 @@ MCE_DATA_SPLITS = {
     "Symptom2Disease": {"train": 200, "val": 50, "test": 212},
     "LawBench": {"train": 200, "val": 50, "test": 100},
     "AEGIS": {"train": 400, "val": 128, "test": 140},
+    "Sentiment": {"train": 30, "val": 15, "test": 15},
 }
 
 TRANSFER_TASKS = [

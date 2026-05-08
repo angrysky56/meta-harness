@@ -446,7 +446,19 @@ def run_evolve(args):
             if result.returncode != 0:
                 print(f"      {_red('FAIL')} benchmark crashed ({_elapsed(elapsed)})")
             else:
-                print(f"      {_green('OK')} ({_elapsed(elapsed)})")
+                # Verify val.json was actually written for at least one dataset
+                model_short_name = model_short
+                has_results = any(
+                    (LOGS_DIR / ds / name / model_short_name / "val.json").exists()
+                    for ds in datasets
+                )
+                if has_results:
+                    print(f"      {_green('OK')} ({_elapsed(elapsed)})")
+                else:
+                    print(
+                        f"      {_red('FAIL')} benchmark exited 0 but no val.json "
+                        f"produced ({_elapsed(elapsed)})"
+                    )
         bench_time = time.time() - bench_start
 
         run_benchmark(["--frontier", "--model", model_short])

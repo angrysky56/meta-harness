@@ -4,6 +4,7 @@ import argparse
 import importlib
 import inspect
 import json
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -17,6 +18,8 @@ import yaml
 from .data import ALL_TASKS, load_dataset_splits, load_dataset_splits_3way
 from .llm import LLM
 from .memory_system import MemorySystem
+
+logger = logging.getLogger(__name__)
 
 
 class JSONLLogger:
@@ -467,14 +470,31 @@ def evaluate_memory(
         return idx, result
 
     results = [None] * len(examples)
+    num_errors = 0
     with ThreadPoolExecutor(max_workers=min(max_workers, len(examples))) as exe:
         futures = {exe.submit(predict_one, i, ex): i for i, ex in enumerate(examples)}
         for future in as_completed(futures):
-            idx, result = future.result()
-            results[idx] = result
+            try:
+                idx, result = future.result()
+                results[idx] = result
+            except Exception as exc:
+                idx = futures[future]
+                logger.warning("predict_one failed for example %d: %s", idx, exc)
+                results[idx] = {
+                    "prediction": "",
+                    "target": examples[idx]["target"],
+                    "was_correct": False,
+                    "prompt_len": 0,
+                    "context_len": 0,
+                    "prompt_text": "",
+                    "error": str(exc),
+                }
+                num_errors += 1
+    if num_errors:
+        logger.warning("evaluate_memory: %d/%d predictions failed", num_errors, len(examples))
 
-    correct = sum(1 for r in results if r["was_correct"])
-    context_lens = [r["context_len"] for r in results]
+    correct = sum(1 for r in results if r and r["was_correct"])
+    context_lens = [r["context_len"] for r in results if r]
     avg_context_len = int(sum(context_lens) / len(context_lens)) if context_lens else 0
     return {
         "accuracy": correct / len(examples),

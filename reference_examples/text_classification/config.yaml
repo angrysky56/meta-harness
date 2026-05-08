@@ -21,9 +21,9 @@ inner_loop:
 
 # Models to test
 models:
-  - model: openrouter/openai/gpt-oss-120b
+  - model: openrouter/deepseek/deepseek-v4-pro
   # To use a custom OpenAI-compatible endpoint instead, switch to e.g.:
-  # - model: gpt-oss-120b
+  # - model: deepseek-v4-pro
   #   api_base: https://your-api-host/v1
 
 # Benchmark sweep settings

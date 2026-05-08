@@ -14,7 +14,12 @@ from typing import Any, Protocol
 
 from litellm import completion as litellm_completion
 from litellm import completion_cost, token_counter
-from openai_harmony import HarmonyEncodingName, Role, load_harmony_encoding
+from openai_harmony import (
+    HarmonyEncodingName,
+    HarmonyError,
+    Role,
+    load_harmony_encoding,
+)
 from tenacity import (
     retry,
     retry_if_exception,
@@ -84,7 +89,7 @@ def parse_harmony_response(raw_content: str) -> str:
 
         if parsed:
             return "".join(c.text for c in parsed[-1].content if hasattr(c, "text"))
-    except (ValueError, TypeError, AttributeError):
+    except (ValueError, TypeError, AttributeError, HarmonyError):
         pass
 
     return raw_content
@@ -297,7 +302,7 @@ class LLM:
 
     def __init__(
         self,
-        model: str = "openrouter/openai/gpt-oss-120b",
+        model: str = "openrouter/deepseek/deepseek-v4-pro",
         api_key: str | None = None,
         api_base: str | None = None,
         temperature: float | None = None,
@@ -427,7 +432,7 @@ class LLM:
 
 
 def make_local_llm(
-    model: str = "gpt-oss-120b",
+    model: str = "deepseek-v4-pro",
     host: str = os.environ.get("LOCAL_LLM_HOST", "localhost"),
     port: int = int(os.environ.get("LOCAL_LLM_PORT", "30000")),
     max_tokens: int = 4096,
